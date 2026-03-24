@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import { Download, Search } from "lucide-react";
 import { PageFrame } from "@/components/page-frame";
 import { Badge } from "@/components/ui/badge";
@@ -12,35 +15,100 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useHistory } from "@/hooks/useHistory";
+import { useProfile } from "@/hooks/useProfile";
+import { useWallet } from "@/components/providers";
+import type { Pact, PactStatus } from "@/lib/types";
 
-const rows = [
-  {
-    date: "Oct 24, 2023",
-    time: "14:22 UTC",
-    asset: "BTC",
-    counterparty: "ox_Aether.eth",
-    status: "Complete",
-    amount: "1.42 BTC",
-  },
-  {
-    date: "Oct 23, 2023",
-    time: "09:15 UTC",
-    asset: "USDC",
-    counterparty: "0x82...f9a1",
-    status: "Pending",
-    amount: "12,500 USDC",
-  },
-  {
-    date: "Oct 21, 2023",
-    time: "18:05 UTC",
-    asset: "LINK",
-    counterparty: "NovaLabs.dao",
-    status: "Cancelled",
-    amount: "500 LINK",
-  },
-];
+
+function StatusBadge({ status }: { status: PactStatus }) {
+  const styles: Record<PactStatus, string> = {
+    COMPLETE: "rounded-full bg-emerald-500/20 text-emerald-300",
+    PENDING: "rounded-full bg-tertiary/20 text-tertiary",
+    ACTIVE: "rounded-full bg-primary/20 text-primary",
+    PROOF_SUBMITTED: "rounded-full bg-secondary-container/20 text-secondary-container",
+    DISPUTED: "rounded-full bg-error/20 text-error",
+    CANCELLED: "rounded-full bg-error/20 text-error",
+    EXPIRED: "rounded-full bg-outline-variant/20 text-on-surface-variant",
+  };
+
+  const labels: Record<PactStatus, string> = {
+    COMPLETE: "Complete",
+    PENDING: "Pending",
+    ACTIVE: "Active",
+    PROOF_SUBMITTED: "Proof Submitted",
+    DISPUTED: "Disputed",
+    CANCELLED: "Cancelled",
+    EXPIRED: "Expired",
+  };
+
+  return (
+    <Badge className={styles[status]}>{labels[status]}</Badge>
+  );
+}
+
+
+function RowSkeleton() {
+  return (
+    <TableRow className="border-outline-variant/20">
+      {[1, 2, 3, 4, 5].map((i) => (
+        <TableCell key={i}>
+          <div className="h-4 w-24 animate-pulse rounded bg-surface-high" />
+        </TableCell>
+      ))}
+    </TableRow>
+  );
+}
+
 
 export default function HistoryPage() {
+  const { walletAddress } = useWallet();
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+
+  const { data, isLoading, isError, refetch } = useHistory({
+    wallet: walletAddress ?? "",
+    page,
+    limit: 20,
+  });
+
+  const { data: profile } = useProfile(walletAddress ?? undefined);
+
+  const rows = data?.data ?? [];
+
+
+  const filtered = rows.filter((pact: Pact) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      pact.asset.symbol.toLowerCase().includes(q) ||
+      pact.counterpartyWallet.toLowerCase().includes(q) ||
+      (pact.itemName ?? "").toLowerCase().includes(q) ||
+      (pact.txHash ?? "").toLowerCase().includes(q)
+    );
+  });
+
+
+  const handleExportCSV = () => {
+    if (!filtered.length) return;
+    const headers = ["Date", "Asset", "Counterparty", "Status", "Amount"];
+    const csvRows = filtered.map((pact: Pact) => [
+      new Date(pact.createdAt).toLocaleDateString(),
+      pact.itemName ?? pact.asset.symbol,
+      pact.counterpartyWallet,
+      pact.status,
+      pact.asset.amountFormatted,
+    ]);
+    const csv = [headers, ...csvRows].map((r) => r.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "safemeet-history.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <PageFrame activeHref="/history" showSidebar>
       <section className="section-wrap space-y-7">
@@ -51,13 +119,17 @@ export default function HistoryPage() {
               Every interaction on the ledger is recorded with cryptographic finality.
             </p>
           </div>
+
+          {/* Stats */}
           <div className="grid min-w-[280px] gap-3 sm:grid-cols-2">
             <Card className="bg-surface text-white">
               <CardHeader className="pb-1">
                 <CardDescription className="text-xs uppercase tracking-[0.14em] text-on-surface-variant">
                   Total Volume
                 </CardDescription>
-                <CardTitle className="font-headline text-2xl font-bold">$142,850</CardTitle>
+                <CardTitle className="font-headline text-2xl font-bold">
+                  {profile ? `$${(profile.completedPacts * 100).toLocaleString()}` : "—"}
+                </CardTitle>
               </CardHeader>
             </Card>
             <Card className="bg-surface text-white">
@@ -66,76 +138,151 @@ export default function HistoryPage() {
                   Success Rate
                 </CardDescription>
                 <CardTitle className="font-headline text-2xl font-bold text-secondary-container">
-                  99.4%
+                  {profile ? `${profile.successRate}%` : "—"}
                 </CardTitle>
               </CardHeader>
             </Card>
           </div>
         </header>
 
-        <Card className="bg-surface text-white">
-          <CardHeader>
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="relative min-w-70 flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant" />
-                <Input
-                  placeholder="Search by asset, hash, or counterparty..."
-                  className="h-10 border-outline-variant/40 bg-surface-high pl-10 text-white placeholder:text-on-surface-variant"
-                />
-              </div>
-              <Button variant="outline" className="h-10 rounded-lg border-outline-variant/40 bg-surface-high text-white">
-                All Types
-              </Button>
-              <Button variant="outline" className="h-10 rounded-lg border-outline-variant/40 bg-surface-high text-white">
-                Past 30 Days
-              </Button>
-              <Button className="h-10 rounded-lg bg-primary-container text-sm font-bold text-white hover:bg-primary-container/90">
-                <Download className="h-4 w-4" />
-                Export CSV
-              </Button>
-            </div>
-          </CardHeader>
+        {/* Disconnected state */}
+        {!walletAddress && (
+          <Card className="bg-surface text-white">
+            <CardHeader>
+              <CardTitle className="font-headline text-2xl font-bold">Wallet not connected</CardTitle>
+              <CardDescription className="text-on-surface-variant">
+                Connect your wallet to view transaction history.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        )}
 
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow className="border-outline-variant/20">
-                  <TableHead>Date</TableHead>
-                  <TableHead>Asset</TableHead>
-                  <TableHead>Counterparty</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow key={`${row.date}-${row.asset}`} className="border-outline-variant/20">
-                    <TableCell>
-                      <p className="font-medium text-white">{row.date}</p>
-                      <p className="text-xs text-on-surface-variant">{row.time}</p>
-                    </TableCell>
-                    <TableCell className="font-semibold text-white">{row.asset}</TableCell>
-                    <TableCell className="text-on-surface-variant">{row.counterparty}</TableCell>
-                    <TableCell>
-                      <Badge
-                        className={
-                          row.status === "Complete"
-                            ? "rounded-full bg-emerald-500/20 text-emerald-300"
-                            : row.status === "Pending"
-                              ? "rounded-full bg-tertiary/20 text-tertiary"
-                              : "rounded-full bg-error/20 text-error"
-                        }
+        {walletAddress && (
+          <Card className="bg-surface text-white">
+            <CardHeader>
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Search */}
+                <div className="relative min-w-70 flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant" />
+                  <Input
+                    placeholder="Search by asset, hash, or counterparty..."
+                    className="h-10 border-outline-variant/40 bg-surface-high pl-10 text-white placeholder:text-on-surface-variant"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  className="h-10 rounded-lg border-outline-variant/40 bg-surface-high text-white"
+                >
+                  All Types
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-10 rounded-lg border-outline-variant/40 bg-surface-high text-white"
+                >
+                  Past 30 Days
+                </Button>
+                <Button
+                  onClick={handleExportCSV}
+                  className="h-10 rounded-lg bg-primary-container text-sm font-bold text-white hover:bg-primary-container/90"
+                >
+                  <Download className="h-4 w-4" />
+                  Export CSV
+                </Button>
+              </div>
+            </CardHeader>
+
+            <CardContent>
+              {isError ? (
+                <div className="py-10 text-center">
+                  <p className="text-sm text-error">Failed to load history.</p>
+                  <Button
+                    onClick={() => refetch()}
+                    className="mt-3 rounded-lg bg-primary-container text-sm font-bold text-white"
+                  >
+                    Retry
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-outline-variant/20">
+                        <TableHead>Date</TableHead>
+                        <TableHead>Asset</TableHead>
+                        <TableHead>Counterparty</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {isLoading ? (
+                        <>
+                          <RowSkeleton />
+                          <RowSkeleton />
+                          <RowSkeleton />
+                        </>
+                      ) : filtered.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="py-12 text-center text-on-surface-variant">
+                            {search ? "No results match your search." : "No transaction history yet."}
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        filtered.map((pact: Pact) => (
+                          <TableRow key={pact.id} className="border-outline-variant/20">
+                            <TableCell>
+                              <p className="font-medium text-white">
+                                {new Date(pact.createdAt).toLocaleDateString()}
+                              </p>
+                              <p className="text-xs text-on-surface-variant">
+                                {new Date(pact.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} UTC
+                              </p>
+                            </TableCell>
+                            <TableCell className="font-semibold text-white">
+                              {pact.itemName ?? pact.asset.symbol}
+                            </TableCell>
+                            <TableCell className="text-on-surface-variant">
+                              {pact.counterpartyWallet}
+                            </TableCell>
+                            <TableCell>
+                              <StatusBadge status={pact.status} />
+                            </TableCell>
+                            <TableCell className="text-right font-semibold text-white">
+                              {pact.asset.amountFormatted}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+
+                  {/* Pagination */}
+                  {data && data.hasMore && (
+                    <div className="mt-4 flex justify-center gap-3">
+                      <Button
+                        variant="outline"
+                        className="h-9 rounded-lg border-outline-variant/40 bg-surface-high text-white"
+                        disabled={page === 1}
+                        onClick={() => setPage((p) => p - 1)}
                       >
-                        {row.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right font-semibold text-white">{row.amount}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+                        Previous
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="h-9 rounded-lg border-outline-variant/40 bg-surface-high text-white"
+                        onClick={() => setPage((p) => p + 1)}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </section>
     </PageFrame>
   );
