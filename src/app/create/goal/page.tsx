@@ -1,11 +1,71 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useForm, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { PageFrame } from "@/components/page-frame";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useCreatePact } from "@/hooks/usePacts";
+import { useProfile } from "@/hooks/useProfile";
+import { useWallet } from "@/components/providers";
+
+// ------------------------------------------------------------
+// Zod form schema
+// ------------------------------------------------------------
+
+const CreateGoalSchema = z.object({
+  goalDescription: z.string().min(10, "Please describe your goal in at least 10 characters"),
+  assetSymbol: z.enum(["ETH", "USDC", "DAI"]),
+  assetAmount: z.coerce.number().positive("Amount must be greater than 0"),
+  counterpartyWallet: z
+    .string()
+    .min(5, "Enter a valid wallet address or ENS name")
+    .regex(/^(0x[a-fA-F0-9]{40}|.+\.eth)$/, "Must be a valid 0x address or .eth name"),
+  goalDeadline: z.string().min(1, "Please set a deadline"),
+});
+
+type CreateGoalForm = z.infer<typeof CreateGoalSchema>;
+
+// ------------------------------------------------------------
+// Create Goal Page
+// ------------------------------------------------------------
 
 export default function CreateGoalPage() {
+  const router = useRouter();
+  const { walletAddress } = useWallet();
+  const createPact = useCreatePact();
+  const { data: profile } = useProfile(walletAddress ?? undefined);
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    formState: { errors },
+  } = useForm<CreateGoalForm>({
+    resolver: zodResolver(CreateGoalSchema),
+    defaultValues: {
+      assetSymbol: "ETH",
+    },
+  });
+
+  const onSubmit = async (data: CreateGoalForm) => {
+    if (!walletAddress) return;
+    const pact = await createPact.mutateAsync({
+      type: "GOAL",
+      goalDescription: data.goalDescription,
+      goalDeadline: new Date(data.goalDeadline).toISOString(),
+      counterpartyWallet: data.counterpartyWallet,
+      assetSymbol: data.assetSymbol,
+      assetAmount: data.assetAmount,
+    });
+    router.push(`/escrow/waiting-room?pactId=${pact.id}`);
+  };
+
   return (
     <PageFrame activeHref="/create">
       <section className="section-wrap grid gap-8 lg:grid-cols-12">
@@ -18,81 +78,127 @@ export default function CreateGoalPage() {
             </p>
           </header>
 
+          {!walletAddress && (
+            <p className="text-sm text-on-surface-variant">
+              Connect your wallet to create a goal pact.
+            </p>
+          )}
+
           <Card className="bg-surface text-white">
             <CardContent className="space-y-5 pt-6">
-            <label className="block space-y-2">
-              <span className="text-xs font-bold uppercase tracking-[0.14em] text-on-surface-variant">
-                Goal description
-              </span>
-              <Textarea
-                className="min-h-32 border-outline-variant/40 bg-surface-high text-white placeholder:text-on-surface-variant"
-                placeholder="Run 50 miles this week"
-              />
-            </label>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="space-y-2">
+              {/* Goal description */}
+              <label className="block space-y-2">
                 <span className="text-xs font-bold uppercase tracking-[0.14em] text-on-surface-variant">
-                  Asset
+                  Goal description
                 </span>
-                <Select defaultValue="ETH">
-                  <SelectTrigger className="h-11 w-full border-outline-variant/40 bg-surface-high text-white">
-                    <SelectValue placeholder="Select asset" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ETH">ETH</SelectItem>
-                    <SelectItem value="USDC">USDC</SelectItem>
-                    <SelectItem value="DAI">DAI</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Textarea
+                  {...register("goalDescription")}
+                  className="min-h-32 border-outline-variant/40 bg-surface-high text-white placeholder:text-on-surface-variant"
+                  placeholder="Run 50 miles this week"
+                />
+                {errors.goalDescription && (
+                  <p className="text-xs text-error">{errors.goalDescription.message}</p>
+                )}
               </label>
-              <label className="space-y-2">
+
+              {/* Asset + Amount */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="space-y-2">
+                  <span className="text-xs font-bold uppercase tracking-[0.14em] text-on-surface-variant">
+                    Asset
+                  </span>
+                  <Controller
+                    name="assetSymbol"
+                    control={control}
+                    render={({ field }) => (
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <SelectTrigger className="h-11 w-full border-outline-variant/40 bg-surface-high text-white">
+                          <SelectValue placeholder="Select asset" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ETH">ETH</SelectItem>
+                          <SelectItem value="USDC">USDC</SelectItem>
+                          <SelectItem value="DAI">DAI</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-xs font-bold uppercase tracking-[0.14em] text-on-surface-variant">
+                    Stake amount
+                  </span>
+                  <Input
+                    {...register("assetAmount")}
+                    className="h-11 border-outline-variant/40 bg-surface-high text-white placeholder:text-on-surface-variant"
+                    placeholder="0.00"
+                    type="number"
+                    step="0.01"
+                  />
+                  {errors.assetAmount && (
+                    <p className="text-xs text-error">{errors.assetAmount.message}</p>
+                  )}
+                </label>
+              </div>
+
+              {/* Referee wallet */}
+              <label className="block space-y-2">
                 <span className="text-xs font-bold uppercase tracking-[0.14em] text-on-surface-variant">
-                  Stake amount
+                  Referee wallet
                 </span>
                 <Input
+                  {...register("counterpartyWallet")}
                   className="h-11 border-outline-variant/40 bg-surface-high text-white placeholder:text-on-surface-variant"
-                  placeholder="0.00"
-                  type="number"
+                  placeholder="0x... or name.eth"
+                  type="text"
                 />
+                {errors.counterpartyWallet && (
+                  <p className="text-xs text-error">{errors.counterpartyWallet.message}</p>
+                )}
               </label>
-            </div>
 
-            <label className="block space-y-2">
-              <span className="text-xs font-bold uppercase tracking-[0.14em] text-on-surface-variant">
-                Referee wallet
-              </span>
-              <Input
-                className="h-11 border-outline-variant/40 bg-surface-high text-white placeholder:text-on-surface-variant"
-                placeholder="0x... or name.eth"
-                type="text"
-              />
-            </label>
+              {/* Deadline */}
+              <label className="block space-y-2">
+                <span className="text-xs font-bold uppercase tracking-[0.14em] text-on-surface-variant">
+                  Deadline
+                </span>
+                <Input
+                  {...register("goalDeadline")}
+                  className="h-11 border-outline-variant/40 bg-surface-high text-white"
+                  type="datetime-local"
+                />
+                {errors.goalDeadline && (
+                  <p className="text-xs text-error">{errors.goalDeadline.message}</p>
+                )}
+              </label>
 
-            <label className="block space-y-2">
-              <span className="text-xs font-bold uppercase tracking-[0.14em] text-on-surface-variant">
-                Deadline
-              </span>
-              <Input
-                className="h-11 border-outline-variant/40 bg-surface-high text-white"
-                type="datetime-local"
-              />
-            </label>
+              {/* API error */}
+              {createPact.isError && (
+                <p className="text-sm text-error">
+                  Failed to create pact. Please try again.
+                </p>
+              )}
 
-            <Button className="h-12 w-full rounded-lg bg-error-container font-headline text-lg font-bold text-white hover:bg-error-container/90">
-              Stake My Pride and Crypto
-            </Button>
+              {/* Submit */}
+              <Button
+                onClick={handleSubmit(onSubmit)}
+                disabled={!walletAddress || createPact.isPending}
+                className="h-12 w-full rounded-lg bg-error-container font-headline text-lg font-bold text-white hover:bg-error-container/90"
+              >
+                {createPact.isPending ? "Staking..." : "Stake My Pride and Crypto"}
+              </Button>
             </CardContent>
           </Card>
         </div>
 
+        {/* Sidebar */}
         <aside className="space-y-4 lg:col-span-5">
           <Card className="bg-surface text-white">
             <CardHeader>
               <CardTitle className="font-headline text-2xl font-bold">Strict Enforcement</CardTitle>
               <CardDescription className="text-sm leading-relaxed text-on-surface-variant">
-                If the referee rejects your proof, funds are redirected by immutable contract
-                logic.
+                If the referee rejects your proof, funds are redirected by immutable contract logic.
               </CardDescription>
             </CardHeader>
           </Card>
@@ -101,15 +207,19 @@ export default function CreateGoalPage() {
               <CardDescription className="text-xs uppercase tracking-[0.14em] text-on-surface-variant">
                 Trust score
               </CardDescription>
-              <CardTitle className="font-headline text-4xl font-bold">842 / 1000</CardTitle>
+              <CardTitle className="font-headline text-4xl font-bold">
+                {profile?.trustScore ? `${profile.trustScore} / 1000` : "— / 1000"}
+              </CardTitle>
             </CardHeader>
           </Card>
           <Card className="bg-surface text-white">
             <CardHeader>
               <CardDescription className="text-xs uppercase tracking-[0.14em] text-on-surface-variant">
-                Escrow limit
+                Completed pacts
               </CardDescription>
-              <CardTitle className="font-headline text-4xl font-bold">500 ETH</CardTitle>
+              <CardTitle className="font-headline text-4xl font-bold">
+                {profile?.completedPacts ?? "—"}
+              </CardTitle>
             </CardHeader>
           </Card>
         </aside>

@@ -1,8 +1,31 @@
-import Link from "next/link";
+"use client";
+
+import { useRouter } from "next/navigation";
 import { PageFrame } from "@/components/page-frame";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { useCreatePact } from "@/hooks/usePacts";
+import { useWallet } from "@/components/providers";
 
 export default function CreatePage() {
+  const router = useRouter();
+  const { walletAddress } = useWallet();
+  const createPact = useCreatePact();
+
+  const handleStartTrade = async () => {
+    if (!walletAddress) return;
+    const pact = await createPact.mutateAsync({
+      type: "TRADE",
+      assetSymbol: "ETH",
+      assetAmount: 0,
+    });
+    router.push(`/escrow/waiting-room?pactId=${pact.id}`);
+  };
+
+  const handleStartGoal = () => {
+    router.push("/create/goal");
+  };
+
   return (
     <PageFrame activeHref="/create">
       <section className="section-wrap space-y-10">
@@ -18,6 +41,13 @@ export default function CreatePage() {
           </p>
         </header>
 
+        {/* Disconnected state */}
+        {!walletAddress && (
+          <p className="text-center text-sm text-on-surface-variant">
+            Connect your wallet to create a pact.
+          </p>
+        )}
+
         <div className="grid gap-6 md:grid-cols-2">
           <Card className="relative overflow-hidden bg-surface text-white">
             <div className="sm-glow -top-28 -right-24 h-56 w-56 bg-primary-container/25" />
@@ -31,12 +61,13 @@ export default function CreatePage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Link
-                href="/escrow/handshake"
-                className="inline-flex h-11 items-center rounded-lg bg-primary-container px-6 text-sm font-bold text-white transition hover:bg-primary-container/90"
+              <Button
+                onClick={handleStartTrade}
+                disabled={!walletAddress || createPact.isPending}
+                className="h-11 rounded-lg bg-primary-container px-6 text-sm font-bold text-white hover:bg-primary-container/90"
               >
-                Start Trade Pact
-              </Link>
+                {createPact.isPending ? "Creating..." : "Start Trade Pact"}
+              </Button>
             </CardContent>
           </Card>
 
@@ -52,12 +83,13 @@ export default function CreatePage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Link
-                href="/create/goal"
-                className="inline-flex h-11 items-center rounded-lg bg-secondary-container px-6 text-sm font-bold text-white transition hover:bg-secondary-container/90"
+              <Button
+                onClick={handleStartGoal}
+                disabled={!walletAddress}
+                className="h-11 rounded-lg bg-secondary-container px-6 text-sm font-bold text-white hover:bg-secondary-container/90"
               >
                 Start Goal Pact
-              </Link>
+              </Button>
             </CardContent>
           </Card>
         </div>
