@@ -21,7 +21,6 @@ import type {
   Profile,
   Session,
   PaginatedResponse,
-  Transaction,
 } from "@/lib/types";
 
 // ------------------------------------------------------------
@@ -43,7 +42,7 @@ export const dashboardApi = {
 export const pactsApi = {
   /** GET /api/pacts?wallet=...&type=...&status=... */
   list: async (filters: PactFilters): Promise<Pact[]> => {
-    const raw = await apiClient.get("/api/pacts", filters as Record<string, string>);
+    const raw = await apiClient.get("/api/pacts", filters as unknown as Record<string, string>);
     return PactListSchema.parse(raw);
   },
 
@@ -91,7 +90,7 @@ export const pactsApi = {
 export const historyApi = {
   /** GET /api/pacts/history?wallet=...&page=...&limit=... */
   list: async (filters: HistoryFilters): Promise<PaginatedResponse<Pact>> => {
-    const raw = await apiClient.get("/api/pacts/history", filters as Record<string, string>);
+    const raw = await apiClient.get("/api/pacts/history", filters as unknown as Record<string, string>);
     return HistoryListSchema.parse(raw);
   },
 };
