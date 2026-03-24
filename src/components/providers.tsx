@@ -1,24 +1,15 @@
 "use client";
 
-// ============================================================
-// apps/web/src/components/providers.tsx
-// App-wide providers — wrap this around your layout
-// Includes: TanStack Query + Wallet context
-// ============================================================
-
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-// ------------------------------------------------------------
-// Query Client
-// ------------------------------------------------------------
 
 function makeQueryClient() {
   return new QueryClient({
     defaultOptions: {
       queries: {
-        staleTime: 15_000,        // 15s default stale time
-        retry: 2,                 // retry failed requests twice
+        staleTime: 15_000,       
+        retry: 2,                
         refetchOnWindowFocus: false,
       },
     },
@@ -29,17 +20,14 @@ let browserQueryClient: QueryClient | undefined = undefined;
 
 function getQueryClient() {
   if (typeof window === "undefined") {
-    // Server: always make a new query client
+    
     return makeQueryClient();
   }
-  // Browser: reuse the same query client
+  
   if (!browserQueryClient) browserQueryClient = makeQueryClient();
   return browserQueryClient;
 }
 
-// ------------------------------------------------------------
-// Wallet Context
-// ------------------------------------------------------------
 
 interface WalletContextValue {
   walletAddress: string | null;
@@ -59,14 +47,11 @@ export function useWallet() {
   return useContext(WalletContext);
 }
 
-// ------------------------------------------------------------
-// Wallet Provider
-// ------------------------------------------------------------
 
 function WalletProvider({ children }: { children: ReactNode }) {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
 
-  // Persist wallet address in localStorage
+  
   useEffect(() => {
     const saved = localStorage.getItem("walletAddress");
     if (saved) setWalletAddress(saved);
@@ -96,9 +81,6 @@ function WalletProvider({ children }: { children: ReactNode }) {
   );
 }
 
-// ------------------------------------------------------------
-// Root Providers — combine all providers here
-// ------------------------------------------------------------
 
 export function Providers({ children }: { children: ReactNode }) {
   const queryClient = getQueryClient();
